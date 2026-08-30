@@ -21,9 +21,10 @@
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
     <button onclick="showExcelForm()" style="border: 2px solid #4285f4; border-radius: 12px; padding: 40px 20px; background: white; cursor: pointer; text-align: center; transition: all 0.2s;" onmouseover="this.style.background='#e8f0fe'" onmouseout="this.style.background='white'">
         <div style="margin-bottom: 15px;">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="3" y="3" width="18" height="18" rx="2" fill="#217346"/>
-                <path d="M7 7h4v4H7V7zm0 6h4v4H7v-4zm6-6h4v4h-4V7zm0 6h4v4h-4v-4z" fill="#fff"/>
+            <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                <rect width="48" height="48" rx="4" fill="#217346"/>
+                <path d="M14 14h8v8h-8zm0 10h8v8h-8zm10-10h8v8h-8zm0 10h8v8h-8z" fill="#fff" opacity="0.9"/>
+                <text x="24" y="38" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold" font-family="Arial">X</text>
             </svg>
         </div>
         <div style="font-size: 20px; font-weight: 600; color: #333;">엑셀 파일 업로드</div>
@@ -31,7 +32,16 @@
     </button>
 
     <button onclick="showSheetsForm()" style="border: 2px solid #34a853; border-radius: 12px; padding: 40px 20px; background: white; cursor: pointer; text-align: center; transition: all 0.2s;" onmouseover="this.style.background='#e6f4ea'" onmouseout="this.style.background='white'">
-        <div style="font-size: 48px; margin-bottom: 15px;">📊</div>
+        <div style="margin-bottom: 15px;">
+            <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                <rect width="48" height="48" rx="4" fill="#0F9D58"/>
+                <rect x="10" y="10" width="28" height="28" rx="2" fill="#fff"/>
+                <rect x="14" y="14" width="8" height="8" fill="#4285F4"/>
+                <rect x="24" y="14" width="8" height="8" fill="#DB4437"/>
+                <rect x="14" y="24" width="8" height="8" fill="#F4B400"/>
+                <rect x="24" y="24" width="8" height="8" fill="#0F9D58"/>
+            </svg>
+        </div>
         <div style="font-size: 20px; font-weight: 600; color: #333;">구글 스프레드시트 연동</div>
         <div style="font-size: 14px; color: #666; margin-top: 8px;">URL을 입력하여 연동</div>
     </button>
