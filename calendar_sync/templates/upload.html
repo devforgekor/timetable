@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}일정 업로드 - Google Calendar Sync{% endblock %}
+{% block title %}일정 동기화 - Google Calendar Sync{% endblock %}
 
 {% block content %}
 <div class="user-info">
@@ -14,81 +14,122 @@
     <a href="/calendar/logout" class="btn btn-danger" style="margin-left: auto; padding: 8px 16px; font-size: 14px;">로그아웃</a>
 </div>
 
-<h1>일정 업로드 및 동기화</h1>
+<h1>일정 동기화</h1>
+<p style="color: #666; margin-bottom: 30px;">방법을 선택하세요</p>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-    <!-- Excel Upload -->
-    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px;">
-        <h2>📁 엑셀 파일 업로드</h2>
-        <form action="/calendar/upload/excel" method="post" enctype="multipart/form-data">
-            <div class="form-group">
-                <label>엑셀 파일 (.xlsx)</label>
-                <input type="file" name="file" accept=".xlsx,.xls" required>
-            </div>
+<!-- Two Big Buttons -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+    <button onclick="showExcelForm()" style="border: 2px solid #4285f4; border-radius: 12px; padding: 40px 20px; background: white; cursor: pointer; text-align: center; transition: all 0.2s;" onmouseover="this.style.background='#e8f0fe'" onmouseout="this.style.background='white'">
+        <div style="font-size: 48px; margin-bottom: 15px;">📁</div>
+        <div style="font-size: 20px; font-weight: 600; color: #333;">엑셀 파일 업로드</div>
+        <div style="font-size: 14px; color: #666; margin-top: 8px;">.xlsx 파일을 선택하여 업로드</div>
+    </button>
 
-            <div class="form-group">
-                <label>동기화 모드</label>
-                <select name="sync_mode">
-                    <option value="full_replace">전체 교체 (기존 일정 삭제 후 새로 추가)</option>
-                    <option value="incremental_update">증분 업데이트 (변경된 것만 수정)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label>시작 날짜 (선택, 전체 교체 모드에서만 사용)</label>
-                <input type="date" name="date_range_start">
-            </div>
-
-            <div class="form-group">
-                <label>종료 날짜 (선택, 전체 교체 모드에서만 사용)</label>
-                <input type="date" name="date_range_end">
-            </div>
-
-            <button type="submit" class="btn" style="width: 100%;">업로드 및 동기화</button>
-        </form>
-    </div>
-
-    <!-- Google Sheets Upload -->
-    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px;">
-        <h2>🔗 구글 스프레드시트 연동</h2>
-        <form action="/calendar/upload/sheets" method="post">
-            <div class="form-group">
-                <label>스프레드시트 URL</label>
-                <input type="url" name="sheets_url" placeholder="https://docs.google.com/spreadsheets/d/.../edit" required>
-            </div>
-
-            <div class="form-group">
-                <label>동기화 모드</label>
-                <select name="sync_mode">
-                    <option value="full_replace">전체 교체 (기존 일정 삭제 후 새로 추가)</option>
-                    <option value="incremental_update">증분 업데이트 (변경된 것만 수정)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label>시작 날짜 (선택, 전체 교체 모드에서만 사용)</label>
-                <input type="date" name="date_range_start">
-            </div>
-
-            <div class="form-group">
-                <label>종료 날짜 (선택, 전체 교체 모드에서만 사용)</label>
-                <input type="date" name="date_range_end">
-            </div>
-
-            <button type="submit" class="btn btn-secondary" style="width: 100%;">연동 및 동기화</button>
-        </form>
-    </div>
+    <button onclick="showSheetsForm()" style="border: 2px solid #34a853; border-radius: 12px; padding: 40px 20px; background: white; cursor: pointer; text-align: center; transition: all 0.2s;" onmouseover="this.style.background='#e6f4ea'" onmouseout="this.style.background='white'">
+        <div style="font-size: 48px; margin-bottom: 15px;">📊</div>
+        <div style="font-size: 20px; font-weight: 600; color: #333;">구글 스프레드시트 연동</div>
+        <div style="font-size: 14px; color: #666; margin-top: 8px;">URL을 입력하여 연동</div>
+    </button>
 </div>
 
+<!-- Excel Form (Hidden by default) -->
+<div id="excelForm" style="display: none; border: 1px solid #ddd; border-radius: 12px; padding: 30px; background: #fafafa;">
+    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">📁 엑셀 파일 업로드</h2>
+        <button onclick="hideAllForms()" style="margin-left: auto; background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+    </div>
+    
+    <form action="/calendar/upload/excel" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <label>엑셀 파일 (.xlsx)</label>
+            <input type="file" name="file" accept=".xlsx,.xls" required style="padding: 15px;">
+        </div>
+
+        <div class="form-group">
+            <label>동기화 모드</label>
+            <select name="sync_mode">
+                <option value="full_replace">전체 교체 (기존 일정 삭제 후 새로 추가)</option>
+                <option value="incremental_update">증분 업데이트 (변경된 것만 수정)</option>
+            </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="form-group">
+                <label>시작 날짜 (선택)</label>
+                <input type="date" name="date_range_start">
+            </div>
+            <div class="form-group">
+                <label>종료 날짜 (선택)</label>
+                <input type="date" name="date_range_end">
+            </div>
+        </div>
+
+        <button type="submit" class="btn" style="width: 100%; padding: 15px; font-size: 18px;">업로드 및 동기화</button>
+    </form>
+</div>
+
+<!-- Google Sheets Form (Hidden by default) -->
+<div id="sheetsForm" style="display: none; border: 1px solid #ddd; border-radius: 12px; padding: 30px; background: #fafafa;">
+    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">📊 구글 스프레드시트 연동</h2>
+        <button onclick="hideAllForms()" style="margin-left: auto; background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+    </div>
+    
+    <form action="/calendar/upload/sheets" method="post">
+        <div class="form-group">
+            <label>스프레드시트 URL</label>
+            <input type="url" name="sheets_url" placeholder="https://docs.google.com/spreadsheets/d/.../edit" required style="padding: 15px;">
+        </div>
+
+        <div class="form-group">
+            <label>동기화 모드</label>
+            <select name="sync_mode">
+                <option value="full_replace">전체 교체 (기존 일정 삭제 후 새로 추가)</option>
+                <option value="incremental_update">증분 업데이트 (변경된 것만 수정)</option>
+            </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="form-group">
+                <label>시작 날짜 (선택)</label>
+                <input type="date" name="date_range_start">
+            </div>
+            <div class="form-group">
+                <label>종료 날짜 (선택)</label>
+                <input type="date" name="date_range_end">
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 15px; font-size: 18px;">연동 및 동기화</button>
+    </form>
+</div>
+
+<!-- Tips -->
 <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-    <h3>💡 팁</h3>
+    <h3>💡 사용 팁</h3>
     <ul style="line-height: 2;">
-        <li><strong>전체 교체 모드</strong>: 날짜 범위를 지정하지 않으면 업로드된 일정의 최소~최대 날짜 범위의 기존 일정이 모두 삭제됩니다.</li>
-        <li><strong>증분 업데이트 모드</strong>: "제목 + 시작일"이 같은 일정을 찾아 비교합니다. 내용이 다르면 업데이트, 새 일정은 추가, 업로드에 없는 기존 일정은 삭제됩니다.</li>
-        <li>구글 스프레드시트 사용 시 <strong>시트 공유 설정</strong>에서 "링크가 있는 모든 사용자" 또는 본인 계정에 "뷰어" 권한이 있어야 합니다.</li>
-        <li>엑셀/시트의 열 이름은 한글(제목, 시작일, 종료일 등) 또는 영문(title, start_date, end_date)을 모두 지원합니다.</li>
+        <li><strong>전체 교체 모드</strong>: 날짜 범위 미지정 시 업로드된 일정 범위의 기존 일정이 모두 삭제됩니다.</li>
+        <li><strong>증분 업데이트 모드</strong>: "제목 + 시작일 + 종료일"로 일정을 비교하여 변경분만 처리합니다.</li>
+        <li>엑셀/시트의 열 이름은 한글(제목, 시작일, 종료일 등) 또는 영문(title, start_date, end_date)을 지원합니다.</li>
     </ul>
 </div>
 
 <a href="/calendar/status" class="btn" style="margin-top: 20px; display: inline-block;">동기화 상태 확인</a>
+
+<script>
+function showExcelForm() {
+    document.getElementById('excelForm').style.display = 'block';
+    document.getElementById('sheetsForm').style.display = 'none';
+}
+
+function showSheetsForm() {
+    document.getElementById('sheetsForm').style.display = 'block';
+    document.getElementById('excelForm').style.display = 'none';
+}
+
+function hideAllForms() {
+    document.getElementById('excelForm').style.display = 'none';
+    document.getElementById('sheetsForm').style.display = 'none';
+}
+</script>
 {% endblock %}
