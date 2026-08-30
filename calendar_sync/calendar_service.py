@@ -46,28 +46,30 @@ class CalendarService:
                 raise
 
     def _batch_execute(self, requests: list) -> list:
-        """Execute multiple requests in batches."""
+        """Execute multiple requests sequentially (batch-compatible).
+
+        google-api-python-client의 new_batch_http_request()는 구버전 전용이며
+        신버전(httpx 기반)에서 동작 방식이 달라 중복/실패가 발생한다.
+        BATCH_SIZE 단위로 순차 실행하되 개별 요청 실패를 격리한다.
+        """
         results = []
         for i in range(0, len(requests), self.BATCH_SIZE):
             batch = requests[i:i + self.BATCH_SIZE]
-            batch_request = self.service.new_batch_http_request()
             batch_results = [None] * len(batch)
 
-            def make_callback(idx):
-                def callback(request_id, response, exception):
-                    batch_results[idx] = (response, exception)
-                return callback
-
             for idx, req in enumerate(batch):
-                batch_request.add(req, callback=make_callback(idx))
+                try:
+                    resp = self._execute_with_retry(req)
+                    batch_results[idx] = (resp, None)
+                except Exception as e:
+                    batch_results[idx] = (None, e)
 
-            batch_request.execute()
             results.extend(batch_results)
 
         return results
 
     def insert_events(self, events: list[CalendarEvent]) -> SyncResult:
-        """Insert multiple events using batch requests."""
+        """Insert multiple events sequentially."""
         self.errors = []
         result = SyncResult()
         requests = []
@@ -75,16 +77,17 @@ class CalendarService:
         for event in events:
             g_event = event.to_google_event()
             req = self.service.events().insert(calendarId=self.calendar_id, body=g_event)
-            requests.append(req)
+            requests.append((req, event))  # Keep event reference for result
 
-        responses = self._batch_execute(requests)
-        for response, exception in responses:
-            if exception:
-                self.errors.append(f"Insert failed: {exception}")
-                result.errors.append(str(exception))
-            else:
+        for req, event in requests:
+            try:
+                self._execute_with_retry(req)
                 result.created += 1
                 result.events.append(event)
+            except Exception as e:
+                err_msg = f"Insert failed for {event.title}: {e}"
+                self.errors.append(err_msg)
+                result.errors.append(str(e))
 
         return result
 
@@ -167,18 +170,30 @@ class CalendarService:
 
         return events
 
-    def _event_key(self, event: dict) -> str:
-        """Generate matching key for incremental sync: title + start date."""
+    @staticmethod
+    def _event_key(event: dict) -> str:
+        """Generate matching key for incremental sync: title + start date + end date.
+
+        P0-2: end_date를 key에 포함해 동일제목·동일시작일 다른종료일 이벤트 구분.
+        """
         summary = event.get("summary", "").strip()
         start = event.get("start", {})
         start_dt = start.get("dateTime") or start.get("date", "")
         start_date = start_dt[:10] if start_dt else ""
-        return f"{summary}|{start_date}"
+        end = event.get("end", {})
+        end_dt = end.get("dateTime") or end.get("date", "")
+        end_date = end_dt[:10] if end_dt else ""
+        return f"{summary}|{start_date}|{end_date}"
+
+    @staticmethod
+    def _new_event_key(event: CalendarEvent) -> str:
+        """Generate matching key for a CalendarEvent object."""
+        return f"{event.title.strip()}|{event.start_date}|{event.end_date}"
 
     def _events_match(self, existing: dict, new_event: CalendarEvent) -> bool:
         """Check if existing event matches new event (same title, date, similar content)."""
         existing_key = self._event_key(existing)
-        new_key = f"{new_event.title.strip()}|{new_event.start_date}"
+        new_key = self._new_event_key(new_event)
         if existing_key != new_key:
             return False
 
@@ -191,6 +206,13 @@ class CalendarService:
         if existing_desc.strip() != new_desc.strip():
             return False
         if existing_loc.strip() != new_loc.strip():
+            return False
+
+        # P1-2: attendees 비교 추가
+        existing_attendees = existing.get("attendees", []) or []
+        existing_attendee_emails = sorted(a.get("email", "") for a in existing_attendees)
+        new_attendee_emails = sorted(new_event.attendees or [])
+        if existing_attendee_emails != new_attendee_emails:
             return False
 
         return True
@@ -223,6 +245,11 @@ class CalendarService:
         deleted = self.delete_events_in_range(start_date, end_date)
         result.deleted = deleted
 
+        # P0-1: delete 실패 시 insert 중단 (중복 이벤트 대량 생성 방지)
+        if self.errors:
+            result.errors = list(self.errors)
+            return result
+
         # Insert new events
         insert_result = self.insert_events(events)
         result.created = insert_result.created
@@ -242,9 +269,9 @@ class CalendarService:
         # Get existing events in range
         existing_events = self.list_events_in_range(start_date, end_date)
 
-        # Build lookup maps
+        # Build lookup maps (P0-2: end_date를 key에 포함)
         existing_map = {self._event_key(e): e for e in existing_events}
-        new_map = {f"{e.title.strip()}|{e.start_date}": e for e in events}
+        new_map = {self._new_event_key(e): e for e in events}
 
         # Process new/updated events
         for key, new_event in new_map.items():

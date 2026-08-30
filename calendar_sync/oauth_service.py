@@ -5,7 +5,7 @@
 
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -180,7 +180,13 @@ class GoogleOAuthService:
         scopes = list(credentials.scopes) if credentials.scopes else self.scopes
         token_expiry = credentials.expiry
         if token_expiry and token_expiry.tzinfo is None:
-            token_expiry = token_expiry.replace(tzinfo=None)
+            token_expiry = token_expiry.replace(tzinfo=timezone.utc)
+
+        # P2-2: refresh_token 없으면 경고 로그
+        refresh_token = credentials.refresh_token or ""
+        if not refresh_token:
+            print(f"WARNING: No refresh_token received for {email}. "
+                  f"User may need to re-authenticate.")
 
         sql = f"""
         INSERT INTO user_tokens (user_id, email, access_token, refresh_token, token_expiry, scopes, updated_at)
@@ -188,7 +194,7 @@ class GoogleOAuthService:
             '{esc_sql(user_id)}',
             '{esc_sql(email)}',
             '{esc_sql(credentials.token)}',
-            '{esc_sql(credentials.refresh_token or "")}',
+            '{esc_sql(refresh_token)}',
             '{esc_sql(token_expiry.isoformat() if token_expiry else "")}',
             '{esc_sql("{" + ",".join(f'"{s}"' for s in scopes) + "}")}',
             NOW()
@@ -243,7 +249,6 @@ class GoogleOAuthService:
         if credentials.expiry:
             expiry = credentials.expiry
             if expiry.tzinfo is None:
-                from datetime import timezone
                 expiry = expiry.replace(tzinfo=timezone.utc)
             if expiry < datetime.now(timezone.utc) + timedelta(minutes=5):
                 if token_data.refresh_token:

@@ -102,9 +102,14 @@ class SessionService:
 
     def cleanup_expired(self) -> int:
         """Remove expired sessions. Returns count of deleted sessions."""
-        from lib.db import psql
-        result = psql("DELETE FROM web_sessions WHERE expires_at < NOW()")
-        return 0  # psql doesn't return affected rows in this mode
+        try:
+            rows = psql_json("SELECT COUNT(*) as cnt FROM web_sessions WHERE expires_at < NOW()")
+            expired_count = rows[0]["cnt"] if rows else 0
+            if expired_count > 0:
+                psql_ok("DELETE FROM web_sessions WHERE expires_at < NOW()")
+            return expired_count
+        except Exception:
+            return 0
 
 
 # Singleton instance

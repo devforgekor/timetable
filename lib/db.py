@@ -23,7 +23,12 @@ import subprocess
 from typing import Optional, Any
 
 # Database connection mode detection
-_db_url = os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL")
+# Vercel Postgres는 POSTGRES_URL 외에 POSTGRES_CONNECTION_STRING 형식으로도 노출됨
+_db_url = (
+    os.environ.get("POSTGRES_URL")
+    or os.environ.get("DATABASE_URL")
+    or os.environ.get("POSTGRES_CONNECTION_STRING")
+)
 _use_psycopg = bool(_db_url)
 
 if _use_psycopg:

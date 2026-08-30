@@ -77,6 +77,13 @@ def get_session(request: Request) -> Optional[dict]:
     session_id = request.cookies.get("calendar_session")
     if not session_id:
         return None
+    # Lazy cleanup: ~5% probability on session access
+    import random
+    if random.random() < 0.05:
+        try:
+            session_service.cleanup_expired()
+        except Exception:
+            pass
     return session_service.get_session(session_id)
 
 
@@ -91,7 +98,7 @@ def set_session(response: RedirectResponse, session_data: dict, request: Request
         httponly=True,
         secure=is_https,
         samesite="lax",
-        max_age=86400 * 7,  # 7 days
+        max_age=86400,  # 24 hours (matches DB session TTL)
     )
     return session_id
 
