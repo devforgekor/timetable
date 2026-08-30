@@ -46,9 +46,9 @@ def get_oauth_service(request: Request, include_sheets: bool = False) -> GoogleO
 def _error_response(request: Request, message: str, errors: list[str]) -> templates.TemplateResponse:
     """Create consistent error response template."""
     return templates.TemplateResponse(
-        "result.html",
-        {
-            "request": request,
+        request=request,
+        name="result.html",
+        context={
             "success": False,
             "message": message,
             "errors": errors,
@@ -60,9 +60,9 @@ def _error_response(request: Request, message: str, errors: list[str]) -> templa
 def _sync_response(request: Request, result: SyncResult) -> templates.TemplateResponse:
     """Create consistent sync result response template."""
     return templates.TemplateResponse(
-        "result.html",
-        {
-            "request": request,
+        request=request,
+        name="result.html",
+        context={
             "success": len(result.errors) == 0,
             "message": f"Sync completed: {result.created} created, {result.updated} updated, {result.deleted} deleted",
             "errors": result.errors,
@@ -173,8 +173,9 @@ async def google_callback(request: Request, code: str = None, state: str = None,
 async def login_page(request: Request, error: str = None):
     """Show login page."""
     return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": error},
+        request=request,
+        name="login.html",
+        context={"error": error},
     )
 
 
@@ -186,8 +187,9 @@ async def upload_page(request: Request):
         return RedirectResponse(url=request.url_for("login_page"))
 
     return templates.TemplateResponse(
-        "upload.html",
-        {"request": request, "user": session},
+        request=request,
+        name="upload.html",
+        context={"user": session},
     )
 
 
@@ -295,8 +297,9 @@ async def status_page(request: Request):
     token_data = oauth.get_stored_tokens(session["user_id"])
 
     return templates.TemplateResponse(
-        "status.html",
-        {"request": request, "user": session, "token": token_data},
+        request=request,
+        name="status.html",
+        context={"user": session, "token": token_data},
     )
 
 
