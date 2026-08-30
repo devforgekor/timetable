@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}동기화 결과 - Google Calendar Sync{% endblock %}
+
+{% block content %}
+<div class="user-info">
+    {% if user.picture %}
+    <img src="{{ user.picture }}" alt="Profile">
+    {% endif %}
+    <div>
+        <strong>{{ user.name or user.email }}</strong><br>
+        <small>{{ user.email }}</small>
+    </div>
+    <a href="/calendar/logout" class="btn btn-danger" style="margin-left: auto; padding: 8px 16px; font-size: 14px;">로그아웃</a>
+</div>
+
+<h1>동기화 결과</h1>
+
+{% if success %}
+<div class="success">
+    <strong>성공:</strong> {{ message }}
+</div>
+{% else %}
+<div class="error">
+    <strong>실패:</strong> {{ message }}
+</div>
+{% endif %}
+
+{% if stats %}
+<div class="stats">
+    <div class="stat success">
+        <div class="stat-value">{{ stats.created }}</div>
+        <div class="stat-label">생성됨</div>
+    </div>
+    <div class="stat warning">
+        <div class="stat-value">{{ stats.updated }}</div>
+        <div class="stat-label">수정됨</div>
+    </div>
+    <div class="stat danger">
+        <div class="stat-value">{{ stats.deleted }}</div>
+        <div class="stat-label">삭제됨</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value">{{ stats.events|length }}</div>
+        <div class="stat-label">처리된 일정</div>
+    </div>
+</div>
+{% endif %}
+
+{% if errors %}
+<h2>오류 상세</h2>
+<ul style="color: #c5221f; line-height: 2;">
+    {% for error in errors %}
+    <li>{{ error }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% if events %}
+<h2>처리된 일정 목록</h2>
+<table>
+    <thead>
+        <tr>
+            <th>제목</th>
+            <th>시작일</th>
+            <th>종료일</th>
+            <th>시간</th>
+            <th>장소</th>
+            <th>참석자</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for event in events %}
+        <tr>
+            <td>{{ event.title }}</td>
+            <td>{{ event.start_date }}</td>
+            <td>{{ event.end_date }}</td>
+            <td>
+                {% if event.start_time %}{{ event.start_time[:5] }}{% endif %}
+                {% if event.start_time and event.end_time %} ~ {% endif %}
+                {% if event.end_time %}{{ event.end_time[:5] }}{% endif %}
+            </td>
+            <td>{{ event.location or '-' }}</td>
+            <td>
+                {% if event.attendees %}
+                    {{ event.attendees|join(', ') }}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<div style="margin-top: 30px; display: flex; gap: 10px;">
+    <a href="/calendar/upload" class="btn">다시 업로드</a>
+    <a href="/calendar/status" class="btn btn-secondary">상태 확인</a>
+    <a href="/calendar/logout" class="btn btn-danger">로그아웃</a>
+</div>
+{% endblock %}

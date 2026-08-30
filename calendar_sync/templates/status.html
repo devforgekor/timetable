@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}동기화 상태 - Google Calendar Sync{% endblock %}
+
+{% block content %}
+<div class="user-info">
+    {% if user.picture %}
+    <img src="{{ user.picture }}" alt="Profile">
+    {% endif %}
+    <div>
+        <strong>{{ user.name or user.email }}</strong><br>
+        <small>{{ user.email }}</small>
+    </div>
+    <a href="/calendar/logout" class="btn btn-danger" style="margin-left: auto; padding: 8px 16px; font-size: 14px;">로그아웃</a>
+</div>
+
+<h1>동기화 상태</h1>
+
+{% if token %}
+<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h3>연결된 구글 계정</h3>
+    <p><strong>이메일:</strong> {{ token.email }}</p>
+    <p><strong>사용자 ID:</strong> {{ token.user_id }}</p>
+    <p><strong>토큰 만료:</strong> {{ token.token_expiry }}</p>
+    <p><strong>권한 범위:</strong></p>
+    <ul>
+        {% for scope in token.scopes %}
+        <li>{{ scope }}</li>
+        {% endfor %}
+    </ul>
+    <p><strong>생성일:</strong> {{ token.created_at }}</p>
+    <p><strong>최근 갱신:</strong> {{ token.updated_at }}</p>
+</div>
+{% else %}
+<div class="warning">
+    저장된 토큰이 없습니다. <a href="/calendar/auth/google/login">다시 로그인</a>해주세요.
+</div>
+{% endif %}
+
+<div style="margin-top: 20px;">
+    <a href="/calendar/upload" class="btn">일정 업로드</a>
+    <a href="/calendar/auth/google/login?sheets=true" class="btn btn-secondary" style="margin-left: 10px;">스프레드시트 권한 추가</a>
+</div>
+{% endblock %}
