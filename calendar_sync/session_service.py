@@ -14,26 +14,33 @@ class SessionService:
     """Manages user sessions in PostgreSQL."""
 
     def __init__(self):
-        self._ensure_table()
+        self._initialized = False
 
     def _ensure_table(self):
-        """Create sessions table if not exists."""
-        from lib.db import psql_ok
-        psql_ok("""
-            CREATE TABLE IF NOT EXISTS web_sessions (
-                session_id TEXT PRIMARY KEY,
-                user_id TEXT,
-                email TEXT,
-                name TEXT,
-                oauth_state TEXT,
-                sheets_mode BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() + INTERVAL '24 hours'
-            )
-        """)
+        """Create sessions table if not exists (lazy init)."""
+        if self._initialized:
+            return
+        try:
+            from lib.db import psql_ok
+            psql_ok("""
+                CREATE TABLE IF NOT EXISTS web_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    user_id TEXT,
+                    email TEXT,
+                    name TEXT,
+                    oauth_state TEXT,
+                    sheets_mode BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() + INTERVAL '24 hours'
+                )
+            """)
+            self._initialized = True
+        except Exception:
+            pass
 
     def create_session(self, session_data: dict, ttl_hours: int = 24) -> str:
         """Create a new session and return session ID."""
+        self._ensure_table()
         session_id = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
         expires = now + timedelta(hours=ttl_hours)
@@ -62,6 +69,7 @@ class SessionService:
 
     def get_session(self, session_id: str) -> Optional[dict]:
         """Retrieve session data by ID. Returns None if expired or not found."""
+        self._ensure_table()
         rows = psql_json(
             f"SELECT * FROM web_sessions WHERE session_id = '{esc_sql(session_id)}' "
             f"AND expires_at > NOW()"
@@ -98,10 +106,12 @@ class SessionService:
 
     def delete_session(self, session_id: str) -> bool:
         """Delete a session."""
+        self._ensure_table()
         return psql_ok(f"DELETE FROM web_sessions WHERE session_id = '{esc_sql(session_id)}'")
 
     def cleanup_expired(self) -> int:
         """Remove expired sessions. Returns count of deleted sessions."""
+        self._ensure_table()
         try:
             rows = psql_json("SELECT COUNT(*) as cnt FROM web_sessions WHERE expires_at < NOW()")
             expired_count = rows[0]["cnt"] if rows else 0
