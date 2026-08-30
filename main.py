@@ -59,17 +59,8 @@ if os.path.exists(static_dir):
 
 @app.get("/")
 async def root():
-    return {
-        "name": "Timetable",
-        "description": "Google Calendar Sync from Excel/Sheets",
-        "version": "1.0.0",
-        "endpoints": {
-            "login": "/calendar/login",
-            "upload": "/calendar/upload",
-            "status": "/calendar/status",
-            "health": "/health",
-        },
-    }
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/calendar/login")
 
 
 @app.get("/health")
