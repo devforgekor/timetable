@@ -23,7 +23,7 @@ wheels/
 lib/*
 !lib/db.py
 !lib/__init__.py
-!lib/_backup/
+lib/_backup/
 
 # Virtual environments
 venv/
