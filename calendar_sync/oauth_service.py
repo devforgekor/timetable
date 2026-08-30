@@ -19,7 +19,28 @@ sys.path.insert(0, SCRIPTS_DIR)
 
 from lib.db import psql_json, psql_ok, esc_sql
 
+import re
+
 from .models import UserToken
+
+# Input validation patterns for SQL safety
+_USER_ID_RE = re.compile(r"^[a-zA-Z0-9@._-]+$")
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9@._+-]+$")
+
+
+def _validate_user_id(user_id: str) -> str:
+    """Validate user_id contains only safe characters."""
+    if not user_id or not _USER_ID_RE.match(user_id):
+        raise ValueError(f"Invalid user_id: {user_id!r}")
+    return user_id
+
+
+def _validate_email(email: str) -> str:
+    """Validate email contains only safe characters."""
+    if not email or not _EMAIL_RE.match(email):
+        raise ValueError(f"Invalid email: {email!r}")
+    return email
+
 
 # Load secrets following existing pattern
 _SECRETS: dict[str, str] = {}
@@ -139,6 +160,13 @@ class GoogleOAuthService:
         if not email or not credentials.token:
             return False
 
+        try:
+            user_id = _validate_user_id(user_id)
+            email = _validate_email(email)
+        except ValueError as e:
+            print(f"Token storage rejected: {e}")
+            return False
+
         scopes = list(credentials.scopes) if credentials.scopes else self.scopes
         token_expiry = credentials.expiry
         if token_expiry and token_expiry.tzinfo is None:
@@ -167,6 +195,10 @@ class GoogleOAuthService:
 
     def get_stored_tokens(self, user_id: str) -> Optional[UserToken]:
         """Retrieve stored tokens for a user."""
+        try:
+            user_id = _validate_user_id(user_id)
+        except ValueError:
+            return None
         rows = psql_json(f"SELECT * FROM user_tokens WHERE user_id = '{esc_sql(user_id)}'")
         if not rows:
             return None
@@ -215,6 +247,10 @@ class GoogleOAuthService:
 
     def revoke_tokens(self, user_id: str) -> bool:
         """Revoke and delete stored tokens."""
+        try:
+            user_id = _validate_user_id(user_id)
+        except ValueError:
+            return False
         token_data = self.get_stored_tokens(user_id)
         if token_data and token_data.access_token:
             try:

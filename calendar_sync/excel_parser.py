@@ -49,44 +49,62 @@ class ExcelParser:
     def __init__(self):
         self.errors: list[str] = []
 
-    def parse_excel(self, file_bytes: bytes) -> list[CalendarEvent]:
-        """Parse Excel file bytes and return list of CalendarEvent objects."""
+    def parse_excel(self, file_bytes: bytes, sheet_name=None) -> list[CalendarEvent]:
+        """Parse Excel file bytes and return list of CalendarEvent objects.
+
+        Args:
+            file_bytes: Excel file content
+            sheet_name: Sheet name to parse. None = parse all sheets.
+                       Use "all" or None for all sheets, or specific sheet name.
+        """
         self.errors = []
 
         try:
-            df = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
+            # Read all sheets if sheet_name is None or "all"
+            if sheet_name is None or sheet_name == "all":
+                all_dfs = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl", sheet_name=None)
+                dfs = list(all_dfs.values())
+                sheet_names = list(all_dfs.keys())
+            else:
+                df = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl", sheet_name=sheet_name)
+                dfs = [df]
+                sheet_names = [sheet_name]
         except Exception as e:
             self.errors.append(f"Failed to read Excel file: {e}")
             return []
 
-        if df.empty:
+        if not dfs:
             self.errors.append("Excel file is empty")
             return []
 
-        # Normalize column names
-        df.columns = [self._normalize_col(c) for c in df.columns]
+        all_events = []
+        for idx, (df, sname) in enumerate(zip(dfs, sheet_names)):
+            if df.empty:
+                continue
 
-        # Map columns to standard names
-        col_mapping = self._detect_columns(df.columns)
-        df = df.rename(columns=col_mapping)
+            # Normalize column names
+            df.columns = [self._normalize_col(c) for c in df.columns]
 
-        # Validate required columns
-        required = ["title", "start_date", "end_date"]
-        missing = [c for c in required if c not in df.columns]
-        if missing:
-            self.errors.append(f"Missing required columns: {', '.join(missing)}")
-            return []
+            # Map columns to standard names
+            col_mapping = self._detect_columns(df.columns)
+            df = df.rename(columns=col_mapping)
 
-        events = []
-        for idx, row in df.iterrows():
-            try:
-                event = self._parse_row(row, idx)
-                if event:
-                    events.append(event)
-            except Exception as e:
-                self.errors.append(f"Row {idx + 2}: {e}")
+            # Validate required columns
+            required = ["title", "start_date", "end_date"]
+            missing = [c for c in required if c not in df.columns]
+            if missing:
+                self.errors.append(f"Sheet '{sname}': Missing required columns: {', '.join(missing)}")
+                continue
 
-        return events
+            for row_idx, row in df.iterrows():
+                try:
+                    event = self._parse_row(row, row_idx)
+                    if event:
+                        all_events.append(event)
+                except Exception as e:
+                    self.errors.append(f"Sheet '{sname}' Row {row_idx + 2}: {e}")
+
+        return all_events
 
     def _normalize_col(self, col: str) -> str:
         """Normalize column name: lowercase, strip, remove spaces/underscores."""

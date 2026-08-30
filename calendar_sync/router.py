@@ -27,6 +27,7 @@ from .excel_parser import ExcelParser
 from .models import CalendarEvent, SyncConfig, SyncMode, SyncResult
 from .oauth_service import GoogleOAuthService
 from .sheets_parser import SheetsParser
+from .session_service import session_service
 
 # Templates
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -42,23 +43,46 @@ def get_oauth_service(request: Request, include_sheets: bool = False) -> GoogleO
     return GoogleOAuthService(redirect_uri=redirect_uri, include_sheets=include_sheets)
 
 
-# In-memory session store (in production, use Redis or database)
-_sessions: dict[str, dict] = {}
+def _error_response(request: Request, message: str, errors: list[str]) -> templates.TemplateResponse:
+    """Create consistent error response template."""
+    return templates.TemplateResponse(
+        "result.html",
+        {
+            "request": request,
+            "success": False,
+            "message": message,
+            "errors": errors,
+            "events": [],
+        },
+    )
+
+
+def _sync_response(request: Request, result: SyncResult) -> templates.TemplateResponse:
+    """Create consistent sync result response template."""
+    return templates.TemplateResponse(
+        "result.html",
+        {
+            "request": request,
+            "success": len(result.errors) == 0,
+            "message": f"Sync completed: {result.created} created, {result.updated} updated, {result.deleted} deleted",
+            "errors": result.errors,
+            "events": result.events,
+            "stats": result,
+        },
+    )
 
 
 def get_session(request: Request) -> Optional[dict]:
-    """Get session data from cookie."""
+    """Get session data from cookie via DB."""
     session_id = request.cookies.get("calendar_session")
-    print(f"[DEBUG] get_session: cookie={session_id}, sessions={list(_sessions.keys())[:3]}...")
-    if session_id and session_id in _sessions:
-        return _sessions[session_id]
-    return None
+    if not session_id:
+        return None
+    return session_service.get_session(session_id)
 
 
 def set_session(response: RedirectResponse, session_data: dict, request: Request = None) -> str:
-    """Create session and set cookie."""
-    session_id = secrets.token_urlsafe(32)
-    _sessions[session_id] = session_data
+    """Create session in DB and set cookie."""
+    session_id = session_service.create_session(session_data)
     # secure=True only for HTTPS; allow HTTP for localhost dev
     is_https = request and request.url.scheme == "https"
     response.set_cookie(
@@ -72,13 +96,11 @@ def set_session(response: RedirectResponse, session_data: dict, request: Request
     return session_id
 
 
-def clear_session(response: RedirectResponse):
-    """Clear session."""
-    session_id = response.headers.get("set-cookie", "")
-    for sid, data in _sessions.items():
-        if sid in session_id:
-            del _sessions[sid]
-            break
+def clear_session(request: Request, response: RedirectResponse):
+    """Clear session from DB and cookie."""
+    session_id = request.cookies.get("calendar_session")
+    if session_id:
+        session_service.delete_session(session_id)
     response.delete_cookie("calendar_session")
 
 
@@ -102,32 +124,32 @@ async def google_callback(request: Request, code: str = None, state: str = None,
     """Handle Google OAuth callback."""
     session = get_session(request)
     if not session:
-        return RedirectResponse(url="/calendar/login?error=session_expired")
+        return RedirectResponse(url=request.url_for("login_page") + "?error=session_expired")
 
     if error:
-        return RedirectResponse(url=f"/calendar/login?error={error}")
+        return RedirectResponse(url=request.url_for("login_page") + f"?error={error}")
 
     if not code or not state:
-        return RedirectResponse(url="/calendar/login?error=missing_params")
+        return RedirectResponse(url=request.url_for("login_page") + "?error=missing_params")
 
     # Verify state
     if state != session.get("oauth_state"):
-        return RedirectResponse(url="/calendar/login?error=invalid_state")
+        return RedirectResponse(url=request.url_for("login_page") + "?error=invalid_state")
 
     oauth = get_oauth_service(request, include_sheets=session.get("sheets_mode", False))
     credentials = oauth.exchange_code_for_tokens(code)
 
     if not credentials:
-        return RedirectResponse(url="/calendar/login?error=token_exchange_failed")
+        return RedirectResponse(url=request.url_for("login_page") + "?error=token_exchange_failed")
 
     # Get user info
     user_info = oauth.get_user_info(credentials.token)
     if not user_info:
-        return RedirectResponse(url="/calendar/login?error=user_info_failed")
+        return RedirectResponse(url=request.url_for("login_page") + "?error=user_info_failed")
 
     # Store tokens
     if not oauth.store_tokens(credentials, user_info):
-        return RedirectResponse(url="/calendar/login?error=token_store_failed")
+        return RedirectResponse(url=request.url_for("login_page") + "?error=token_store_failed")
 
     # Update session with user info
     session["user_id"] = user_info.get("id")
@@ -135,7 +157,7 @@ async def google_callback(request: Request, code: str = None, state: str = None,
     session["name"] = user_info.get("name")
     session["picture"] = user_info.get("picture")
 
-    response = RedirectResponse(url="/calendar/upload")
+    response = RedirectResponse(url=request.url_for("upload_page"))
     set_session(response, session, request)
     return response
 
@@ -154,7 +176,7 @@ async def upload_page(request: Request):
     """Show upload page (requires login)."""
     session = get_session(request)
     if not session or not session.get("user_id"):
-        return RedirectResponse(url="/calendar/login")
+        return RedirectResponse(url=request.url_for("login_page"))
 
     return templates.TemplateResponse(
         "upload.html",
@@ -186,34 +208,16 @@ async def upload_excel(
     events = parser.parse_excel(content)
 
     if parser.errors:
-        return templates.TemplateResponse(
-            "result.html",
-            {
-                "request": request,
-                "success": False,
-                "message": "Excel parsing failed",
-                "errors": parser.errors,
-                "events": [],
-            },
-        )
+        return _error_response(request, "Excel parsing failed", parser.errors)
 
     if not events:
-        return templates.TemplateResponse(
-            "result.html",
-            {
-                "request": request,
-                "success": False,
-                "message": "No valid events found in Excel",
-                "errors": ["No valid events"],
-                "events": [],
-            },
-        )
+        return _error_response(request, "No valid events found in Excel", ["No valid events"])
 
     # Sync to Calendar
     oauth = get_oauth_service(request)
     credentials = oauth.get_valid_credentials(session["user_id"])
     if not credentials:
-        return RedirectResponse(url="/calendar/login?error=token_expired")
+        return RedirectResponse(url=request.url_for("login_page") + "?error=token_expired")
 
     config = SyncConfig(
         mode=SyncMode(sync_mode),
@@ -224,17 +228,7 @@ async def upload_excel(
     calendar = CalendarService(credentials, config.calendar_id)
     result = calendar.sync_events(events, config)
 
-    return templates.TemplateResponse(
-        "result.html",
-        {
-            "request": request,
-            "success": len(result.errors) == 0,
-            "message": f"Sync completed: {result.created} created, {result.updated} updated, {result.deleted} deleted",
-            "errors": result.errors,
-            "events": result.events,
-            "stats": result,
-        },
-    )
+    return _sync_response(request, result)
 
 
 @router.post("/upload/sheets")
@@ -258,35 +252,17 @@ async def upload_sheets(
     oauth = get_oauth_service(request, include_sheets=True)
     credentials = oauth.get_valid_credentials(session["user_id"])
     if not credentials:
-        return RedirectResponse(url="/calendar/auth/google/login?sheets=true")
+        return RedirectResponse(url=request.url_for("google_login") + "?sheets=true")
 
     # Parse Sheets
     parser = SheetsParser()
-    events = parser.parse_sheets_url(sheets_url, credentials.token)
+    events = parser.parse_sheets_url(sheets_url, credentials=credentials)
 
     if parser.errors:
-        return templates.TemplateResponse(
-            "result.html",
-            {
-                "request": request,
-                "success": False,
-                "message": "Google Sheets parsing failed",
-                "errors": parser.errors,
-                "events": [],
-            },
-        )
+        return _error_response(request, "Google Sheets parsing failed", parser.errors)
 
     if not events:
-        return templates.TemplateResponse(
-            "result.html",
-            {
-                "request": request,
-                "success": False,
-                "message": "No valid events found in Google Sheets",
-                "errors": ["No valid events"],
-                "events": [],
-            },
-        )
+        return _error_response(request, "No valid events found in Google Sheets", ["No valid events"])
 
     # Sync to Calendar
     config = SyncConfig(
@@ -298,17 +274,7 @@ async def upload_sheets(
     calendar = CalendarService(credentials, config.calendar_id)
     result = calendar.sync_events(events, config)
 
-    return templates.TemplateResponse(
-        "result.html",
-        {
-            "request": request,
-            "success": len(result.errors) == 0,
-            "message": f"Sync completed: {result.created} created, {result.updated} updated, {result.deleted} deleted",
-            "errors": result.errors,
-            "events": result.events,
-            "stats": result,
-        },
-    )
+    return _sync_response(request, result)
 
 
 @router.get("/status", response_class=HTMLResponse)
@@ -316,7 +282,7 @@ async def status_page(request: Request):
     """Show sync status page."""
     session = get_session(request)
     if not session or not session.get("user_id"):
-        return RedirectResponse(url="/calendar/login")
+        return RedirectResponse(url=request.url_for("login_page"))
 
     oauth = get_oauth_service(request)
     token_data = oauth.get_stored_tokens(session["user_id"])
@@ -335,6 +301,6 @@ async def logout(request: Request):
         oauth = get_oauth_service(request)
         oauth.revoke_tokens(session["user_id"])
 
-    response = RedirectResponse(url="/calendar/login")
-    clear_session(response)
+    response = RedirectResponse(url=request.url_for("login_page"))
+    clear_session(request, response)
     return response

@@ -4,11 +4,13 @@
 """Google Sheets parser for calendar events."""
 
 import re
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import gspread
 import pandas as pd
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleRequest
 
 from .excel_parser import ExcelParser
 from .models import CalendarEvent
@@ -21,8 +23,33 @@ class SheetsParser:
         self.errors: list[str] = []
         self.excel_parser = ExcelParser()
 
-    def parse_sheets_url(self, url: str, access_token: str) -> list[CalendarEvent]:
-        """Parse Google Sheets from URL using user's access token."""
+    def _ensure_valid_credentials(self, credentials: Credentials) -> Optional[Credentials]:
+        """Ensure credentials are valid, refresh if expired."""
+        if not credentials:
+            return None
+
+        # Check if token is expired or expiring soon (5 min buffer)
+        if credentials.expiry:
+            expiry = credentials.expiry
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            if expiry < datetime.now(timezone.utc) + timedelta(minutes=5):
+                try:
+                    credentials.refresh(GoogleRequest())
+                except Exception as e:
+                    self.errors.append(f"Token refresh failed: {e}")
+                    return None
+
+        return credentials
+
+    def parse_sheets_url(self, url: str, access_token: str = None, credentials: Credentials = None) -> list[CalendarEvent]:
+        """Parse Google Sheets from URL using user's credentials.
+
+        Args:
+            url: Google Sheets URL
+            access_token: Legacy parameter (used if credentials not provided)
+            credentials: Google OAuth Credentials object (preferred)
+        """
         self.errors = []
 
         try:
@@ -32,10 +59,20 @@ class SheetsParser:
                 self.errors.append("Invalid Google Sheets URL")
                 return []
 
-            # Create credentials from access token
-            credentials = Credentials(token=access_token, scopes=[
-                "https://www.googleapis.com/auth/spreadsheets.readonly"
-            ])
+            # Create or validate credentials
+            if credentials is None:
+                if access_token is None:
+                    self.errors.append("No credentials provided")
+                    return []
+                credentials = Credentials(token=access_token, scopes=[
+                    "https://www.googleapis.com/auth/spreadsheets.readonly"
+                ])
+
+            # Ensure credentials are valid (refresh if needed)
+            credentials = self._ensure_valid_credentials(credentials)
+            if not credentials:
+                self.errors.append("Failed to obtain valid credentials")
+                return []
 
             # Authorize gspread
             gc = gspread.authorize(credentials)

@@ -3,7 +3,7 @@
 # Path: calendar_sync/oauth_service.py, calendar_sync/router.py
 """Pydantic models for calendar sync feature."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -25,8 +25,8 @@ class UserToken(BaseModel):
     refresh_token: Optional[str] = None
     token_expiry: datetime
     scopes: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class CalendarEvent(BaseModel):
