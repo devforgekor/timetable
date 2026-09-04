@@ -208,6 +208,24 @@ class CalendarService:
         if existing_loc.strip() != new_loc.strip():
             return False
 
+        # Compare start/end time
+        existing_start = existing.get("start", {})
+        existing_end = existing.get("end", {})
+        existing_start_dt = existing_start.get("dateTime", "")
+        existing_end_dt = existing_end.get("dateTime", "")
+
+        if existing_start_dt:
+            existing_start_time = existing_start_dt[11:19]  # HH:MM:SS
+            new_start_time = new_event.start_time or "00:00:00"
+            if existing_start_time != new_start_time:
+                return False
+
+        if existing_end_dt:
+            existing_end_time = existing_end_dt[11:19]  # HH:MM:SS
+            new_end_time = new_event.end_time or "23:59:59"
+            if existing_end_time != new_end_time:
+                return False
+
         # P1-2: attendees 비교 추가
         existing_attendees = existing.get("attendees", []) or []
         existing_attendee_emails = sorted(a.get("email", "") for a in existing_attendees)
